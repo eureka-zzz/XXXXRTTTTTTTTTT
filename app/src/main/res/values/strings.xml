@@ -654,4 +654,7 @@ You can still try it, but please wait for a stable version — it will be launch
     <string name="dnd_mode_s">DND Mode [%s]</string>
     <string name="freeze_last_seen_s">Freeze Last Seen [%s]</string>
     <string name="manage_recordings">Manage Recordings</string>
+
+    <string name="enable_crash_analytics">Share Anonymous Crash Logs</string>
+    <string name="enable_crash_analytics_sum">Help us fix bugs by sharing anonymous crash logs to Firebase Crashlytics.</string>
 </resources>

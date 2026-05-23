@@ -9,9 +9,9 @@ plugins {
     alias(libs.plugins.materialthemebuilder)
     alias(libs.plugins.kotlinAndroid)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
-
-// Firebase Crashlytics and Analytics have been removed from the project.
 
 kotlin {
     jvmToolchain(17)
@@ -223,6 +223,11 @@ dependencies {
     implementation(libs.androidx.savedstate.ktx)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.activity.compose)
+    
+    // Firebase
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.analytics)
+    implementation(libs.firebase.crashlytics)
 }
 
 configurations.all {

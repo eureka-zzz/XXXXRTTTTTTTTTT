@@ -281,8 +281,55 @@ public class HomeFragment extends BaseFragment {
         setupReleaseChannelSelector();
         setupUpdateBanner();
         startCardAnimations();
+        
+        showConsentDialogIfNeeded();
 
         return binding.getRoot();
+    }
+    
+    private void showConsentDialogIfNeeded() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(requireContext());
+        if (!prefs.contains("consent_crashlytics_asked")) {
+            com.google.android.material.bottomsheet.BottomSheetDialog dialog = new com.google.android.material.bottomsheet.BottomSheetDialog(requireContext());
+            android.view.View view = android.view.LayoutInflater.from(requireContext()).inflate(R.layout.bottom_sheet_action, null);
+            dialog.setContentView(view);
+            dialog.setCancelable(false);
+
+            ((com.google.android.material.textview.MaterialTextView) view.findViewById(R.id.bs_title)).setText("Share Anonymous Crash Logs");
+            ((com.google.android.material.textview.MaterialTextView) view.findViewById(R.id.bs_message)).setText("Help us fix bugs by sharing anonymous crash logs.\n\nYou can always change this preference later in Settings.");
+
+            com.google.android.material.button.MaterialButton acceptBtn = view.findViewById(R.id.bs_confirm_btn);
+            acceptBtn.setText("Accept");
+            acceptBtn.setOnClickListener(v -> {
+                prefs.edit().putBoolean("consent_crashlytics_asked", true)
+                        .putBoolean("enable_crash_analytics", true).apply();
+                try {
+                    Class<?> firebaseAnalyticsClass = Class.forName("com.google.firebase.analytics.FirebaseAnalytics");
+                    Object analyticsInstance = firebaseAnalyticsClass.getMethod("getInstance", android.content.Context.class).invoke(null, requireContext());
+                    firebaseAnalyticsClass.getMethod("setAnalyticsCollectionEnabled", boolean.class).invoke(analyticsInstance, true);
+                    
+                    Class<?> firebaseCrashlyticsClass = Class.forName("com.google.firebase.crashlytics.FirebaseCrashlytics");
+                    Object crashlyticsInstance = firebaseCrashlyticsClass.getMethod("getInstance").invoke(null);
+                    firebaseCrashlyticsClass.getMethod("setCrashlyticsCollectionEnabled", boolean.class).invoke(crashlyticsInstance, true);
+                } catch (Throwable ignored) {}
+                dialog.dismiss();
+            });
+
+            com.google.android.material.button.MaterialButton declineBtn = view.findViewById(R.id.bs_cancel_btn);
+            declineBtn.setText("Decline");
+            declineBtn.setOnClickListener(v -> {
+                prefs.edit().putBoolean("consent_crashlytics_asked", true)
+                        .putBoolean("enable_crash_analytics", false).apply();
+                dialog.dismiss();
+            });
+
+            android.view.View bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+            if (bottomSheet != null) {
+                bottomSheet.setBackgroundResource(android.R.color.transparent);
+            }
+
+            dialog.show();
+        }
     }
 
     private void openUrl(Context context, String url) {

@@ -65,11 +65,28 @@ public class App extends Application {
             try {
                 Class<?> firebaseAppClass = Class.forName("com.google.firebase.FirebaseApp");
                 firebaseAppClass.getMethod("initializeApp", Context.class).invoke(null, App.this);
+                
+                boolean enableCrashAnalytics = PreferenceManager.getDefaultSharedPreferences(this).getBoolean("enable_crash_analytics", false);
+                
+                Class<?> firebaseAnalyticsClass = Class.forName("com.google.firebase.analytics.FirebaseAnalytics");
+                Object analyticsInstance = firebaseAnalyticsClass.getMethod("getInstance", Context.class).invoke(null, App.this);
+                firebaseAnalyticsClass.getMethod("setAnalyticsCollectionEnabled", boolean.class).invoke(analyticsInstance, enableCrashAnalytics);
+                
+                Class<?> firebaseCrashlyticsClass = Class.forName("com.google.firebase.crashlytics.FirebaseCrashlytics");
+                Object crashlyticsInstance = firebaseCrashlyticsClass.getMethod("getInstance").invoke(null);
+                firebaseCrashlyticsClass.getMethod("setCrashlyticsCollectionEnabled", boolean.class).invoke(crashlyticsInstance, enableCrashAnalytics);
             } catch (Throwable ignored) {
             }
         }
         
         var sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        
+        // Force create the preferences file if it doesn't exist so LSPosed file watcher doesn't fail
+        File prefFile = new File(getApplicationInfo().dataDir, "shared_prefs/" + getPackageName() + "_preferences.xml");
+        if (!prefFile.exists()) {
+            sharedPreferences.edit().putBoolean("init_prefs_creation", true).commit();
+        }
+        
         var mode = Integer.parseInt(sharedPreferences.getString("thememode", "0"));
         setThemeMode(mode);
         changeLanguage(this);

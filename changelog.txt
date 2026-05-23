@@ -1,6 +1,5 @@
 [Improvements]
-- Completely removed Google Crashlytics to guarantee a 100% tracker-free and secure environment
-- Refactored and highly optimized core Java hooking architecture for zero-lag performance
+- Reintroduced optional Google Crashlytics with a strict, privacy-first explicit consent flow
 - Enhanced overall module stability by utilizing lightweight native integration
 
 [Fixes]
