@@ -78,6 +78,7 @@ public class CallPrivacy extends Feature {
                 switch (rejectType) {
                     case "uncallable":
                     case "declined":
+                    case "busy":
                         var params = ReflectionUtils.initArray(rejectCallMethod.getParameterTypes());
                         params[0] = callId;
                         params[1] = "declined".equals(rejectType) ? null : rejectType;
