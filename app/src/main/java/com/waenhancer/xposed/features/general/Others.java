@@ -418,7 +418,7 @@ public class Others extends Feature {
     private static java.lang.reflect.Method cachedGetCurrentItemMethod = null;
     private static int cachedPagerId = -1;
 
-    private static boolean isChatsTabActive(View view) {
+    private static boolean isNotUpdatesTabActive(View view) {
         if (view == null) return false;
         try {
             View root = view.getRootView();
@@ -433,7 +433,14 @@ public class Others extends Feature {
                     }
                     Integer currentItem = (Integer) cachedGetCurrentItemMethod.invoke(pager);
                     if (currentItem != null) {
-                        return currentItem == 0;
+                        int statusIndex = 1;
+                        try {
+                            int idx = com.waenhancer.xposed.features.customization.SeparateGroup.tabs.indexOf(com.waenhancer.xposed.features.customization.SeparateGroup.STATUS);
+                            if (idx != -1) {
+                                statusIndex = idx;
+                            }
+                        } catch (Throwable ignored) {}
+                        return currentItem != statusIndex;
                     }
                 }
             }
@@ -464,8 +471,8 @@ public class Others extends Feature {
                             if (current != null) {
                                 View fab = current.findViewById(fabId);
                                 if (fab != null) {
-                                    boolean isChats = isChatsTabActive(fab);
-                                    if (isChats) {
+                                    boolean hideFab = isNotUpdatesTabActive(fab);
+                                    if (hideFab) {
                                         fab.setVisibility(View.GONE);
                                     } else {
                                         fab.setVisibility(View.VISIBLE);
@@ -579,7 +586,7 @@ public class Others extends Feature {
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                     View view = (View) param.thisObject;
                     if (view.getId() == fabId) {
-                        if (isChatsTabActive(view)) {
+                        if (isNotUpdatesTabActive(view)) {
                             param.args[0] = View.GONE;
                         }
                     }
@@ -597,7 +604,7 @@ public class Others extends Feature {
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     View view = (View) param.thisObject;
                     if (view.getId() == fabId) {
-                        boolean isChats = isChatsTabActive(view);
+                        boolean hideFab = isNotUpdatesTabActive(view);
 
                         // Dynamically traverse up the hierarchy to hook setVisibility overrides (always do this for fab_second)
                         Class<?> clazz = view.getClass();
@@ -624,7 +631,7 @@ public class Others extends Feature {
                             clazz = clazz.getSuperclass();
                         }
 
-                        if (isChats) {
+                        if (hideFab) {
                             view.setVisibility(View.GONE);
                         }
                     }

@@ -108,37 +108,45 @@ public class SeparateGroup extends Feature {
                                 int chatCount = 0;
                                 int groupCount = 0;
                                 SQLiteDatabase db = MessageStore.getInstance().getDatabase();
-                                if (db == null) return;
-                                String sql = "SELECT * FROM chat WHERE unseen_message_count != 0";
-                                Cursor cursor = db.rawQuery(sql, null);
-                                if (cursor != null) {
+                                if (db != null) {
                                     try {
-                                        while (cursor.moveToNext()) {
-                                            int jid = cursor.getInt(cursor.getColumnIndex("jid_row_id"));
-                                            int groupType = cursor.getInt(cursor.getColumnIndex("group_type"));
-                                            int archived = cursor.getInt(cursor.getColumnIndex("archived"));
-                                            int chatLocked = cursor.getInt(cursor.getColumnIndex("chat_lock"));
-                                            if (archived != 0 || (groupType != 0 && groupType != 6) || chatLocked != 0) {
-                                                continue;
-                                            }
-                                            String sql2 = "SELECT * FROM jid WHERE _id == ?";
-                                            Cursor cursor1 = db.rawQuery(sql2, new String[]{String.valueOf(jid)});
-                                            if (cursor1 != null) {
-                                                try {
-                                                    if (!cursor1.moveToFirst()) continue;
-                                                    String server = cursor1.getString(cursor1.getColumnIndex("server"));
-                                                    if ("g.us".equals(server)) {
-                                                        groupCount++;
-                                                    } else {
-                                                        chatCount++;
+                                        String sql = "SELECT c.*, j.server AS jid_server " +
+                                                "FROM chat c " +
+                                                "LEFT JOIN jid j ON c.jid_row_id = j._id " +
+                                                "WHERE c.unseen_message_count != 0";
+
+                                        Cursor cursor = db.rawQuery(sql, null);
+                                        if (cursor != null) {
+                                            try {
+                                                int idxGroupType = cursor.getColumnIndex("group_type");
+                                                int idxArchived = cursor.getColumnIndex("archived");
+                                                int idxChatLock = cursor.getColumnIndex("chat_lock");
+                                                int idxServer = cursor.getColumnIndex("jid_server");
+
+                                                while (cursor.moveToNext()) {
+                                                    int groupType = idxGroupType >= 0 ? cursor.getInt(idxGroupType) : 0;
+                                                    int archived = idxArchived >= 0 ? cursor.getInt(idxArchived) : 0;
+                                                    int chatLocked = idxChatLock >= 0 ? cursor.getInt(idxChatLock) : 0;
+
+                                                    if (archived != 0 || (groupType != 0 && groupType != 6) || chatLocked != 0) {
+                                                        continue;
                                                     }
-                                                } finally {
-                                                    cursor1.close();
+
+                                                    if (idxServer >= 0) {
+                                                        String server = cursor.getString(idxServer);
+                                                        if ("g.us".equals(server)) {
+                                                            groupCount++;
+                                                        } else {
+                                                            chatCount++;
+                                                        }
+                                                    }
                                                 }
+                                            } finally {
+                                                cursor.close();
                                             }
                                         }
-                                    } finally {
-                                        cursor.close();
+                                    } catch (Throwable t) {
+                                        XposedBridge.log("SeparateGroup DB Error: " + t);
                                     }
                                 }
 
