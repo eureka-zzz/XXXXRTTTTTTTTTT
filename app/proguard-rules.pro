@@ -5,126 +5,117 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# =============================================================================
+# 1. AGGRESSIVE OPTIMIZATIONS & GENERAL R8 TUNING
+# =============================================================================
+-optimizationpasses 5
+-allowaccessmodification
+-overloadaggressively
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep essential JVM metadata attributes but discard everything else
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-# General Stability for R8
--keepattributes *Annotation*,Signature,InnerClasses,SourceFile,LineNumberTable
+# Strip all debug/logging logs entirely from production builds
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int d(...);
+}
 
--dontwarn *
+# =============================================================================
+# 2. XPOSED & ENTRY POINT BOUNDARIES (MUST BE KEPT)
+# =============================================================================
 
-# Keep the critical Xposed loading entry point and all its members
+# Keep Xposed framework entry points intact so LSPosed can load your module
+-keep public class * implements de.robv.android.xposed.IXposedHookLoadPackage { *; }
+-keep public class * implements de.robv.android.xposed.IXposedHookInitPackageResources { *; }
+-keep public class * implements de.robv.android.xposed.IXposedHookZygoteInit { *; }
+
+# Keep Xposed loading entry point classes and their member signatures
 -keep class com.waenhancer.WppXposed { *; }
 
-# ── Pro module: aggressive obfuscation ───────────────────────────────────────
-# Keep only what is strictly needed for reflection (Class.forName + constructor)
-# and JNI (native method signatures must match the C++ side).
-# Everything else in the pro package gets fully obfuscated.
+# Keep the reflective constructors for all Feature modules loaded dynamically
+-keep class * extends com.waenhancer.xposed.core.Feature {
+    public <init>(java.lang.ClassLoader, android.content.SharedPreferences);
+}
+
+# Keep dynamic ProFeature stubs and classes loaded via reflection
 -keep class com.waenhancer.pro.ProFeature {
     public <init>(java.lang.ClassLoader, android.content.SharedPreferences);
     native <methods>;
     protected void setupNativeHooks(java.lang.String[]);
 }
+-keep class com.waenhancer.pro.MessageBomber { *; }
+-keep class com.waenhancer.pro.DeleteMessageFile { *; }
 
 -keepclassmembers class * extends com.waenhancer.pro.ProFeature {
     protected void setupNativeHooks(java.lang.String[]);
 }
 
-# Keep Native Security Bridge
+# Keep Native Security Bridge (JNI signatures must match C++ export names)
 -keepclasseswithmembernames class com.waenhancer.pro.utils.SecurityNative {
     native <methods>;
 }
--keep class com.waenhancer.pro.utils.SecurityNative { *; }
 
-# Keep Network and Crypto classes
--keep class com.waenhancer.xposed.utils.KeystoreHelper { *; }
--keep class com.waenhancer.xposed.utils.LicenseManager { *; }
--keep class com.waenhancer.pro.utils.ProStatusManager { *; }
--keep class com.waenhancer.pro.utils.ProConfig { *; }
-
-# Keep the reflective constructors for all Feature plugins loaded dynamically at startup or lazily
--keep class * extends com.waenhancer.xposed.core.Feature {
-    public <init>(java.lang.ClassLoader, android.content.SharedPreferences);
-}
-
-# Keep critical cross-app target Activities called via ComponentName string from WhatsApp process context
--keep class com.waenhancer.activities.ChangelogActivity { *; }
--keep class com.waenhancer.xposed.features.others.EmbeddedSettingsActivity { *; }
-
-# Keep all IPC bridge AIDL interface, stub, and client classes intact to maintain communication stability
+# Keep all IPC bridge stub and AIDL classes intact to maintain process stability
 -keep class com.waenhancer.xposed.bridge.** { *; }
 
-# Strip all debug info from pro classes — no source file, no line numbers
--assumenosideeffects class com.waenhancer.pro.** {
-    void log(...);
+# =============================================================================
+# 3. LICENSING LAYER REFLECTION SAFETY (GAP CLOSED)
+# =============================================================================
+# Keep the names and reflective entrypoints of LicenseManager, ProStatusManager,
+# and ProConfig to ensure dynamic lookups succeed without throwing ClassNotFoundException.
+-keep class com.waenhancer.xposed.utils.LicenseManager {
+    public static void makePrefsWorldReadable(android.content.Context);
+    public static void silentCheck(android.content.Context);
+    public <init>(...);
 }
 
-# Obfuscate the dictionary for pro classes — use single-char names
--repackageclasses ''
--allowaccessmodification
--overloadaggressively
+-keep class com.waenhancer.pro.utils.ProStatusManager { *; }
+-keep class com.waenhancer.pro.utils.ProStatusManager$ProStatus { *; }
+-keep class com.waenhancer.pro.utils.ProConfig { *; }
 
+# =============================================================================
+# 4. FLAT PACKAGING (REPACKAGING CLASSES TO MATCH COMPETITOR)
+# =============================================================================
+# Repackage all internal utility, library, and support classes 
+# into a custom root package 'Z'. This makes decompiled APKs incredibly hard to read.
+-repackageclasses 'Z'
 -renamesourcefileattribute ""
 
-# Keep AndroidX libraries that are often accessed via reflection in Xposed environments
--keep class androidx.preference.** { *; }
--keep class androidx.fragment.** { *; }
--keep class androidx.appcompat.** { *; }
--keep class com.google.android.material.** { *; }
+# =============================================================================
+# 5. SELECTIVE THIRD-PARTY KEEPS (LIBRARY GAP CLOSED)
+# =============================================================================
+# We don't keep entire library packages (OkHttp, material, etc.) anymore.
+# We only target reflection targets.
 
-# Keep DexKit and other local libraries
--keep class io.luckypray.dexkit.** { *; }
--keep class org.luckypray.dexkit.** { *; }
--keep class com.waenhancer.xposed.utils.ResId** { *; }
-
-# Keep all custom preference classes since they are inflated via reflection from XML
+# AndroidX preferences dynamically inflated from XML layouts
 -keep class com.waenhancer.preference.** { *; }
+-keep class * extends androidx.preference.Preference {
+    public <init>(android.content.Context, android.util.AttributeSet);
+    public <init>(android.content.Context, android.util.AttributeSet, int);
+}
 
-# Keep Unobfuscator and UnobfuscatorCache to prevent obfuscation, class merging, and method inlining
--keep class com.waenhancer.xposed.core.devkit.** { *; }
-
-# Keep Firebase classes accessed via reflection
--keep class com.google.firebase.** { *; }
--dontwarn com.google.firebase.**
-
-# Support for Xposed libraries
--keep class de.robv.android.xposed.** { *; }
--dontwarn de.robv.android.xposed.**
-
--keep class io.github.libxposed.** { *; }
-
-# Bouncy Castle
--keep class org.bouncycastle.** { *; }
--dontwarn org.bouncycastle.**
-
-# Support for jStyleParser — both the API (css) and the impl (csskit) packages must be kept.
-# CSSFactory uses Class.forName("cz.vutbr.web.csskit.RuleFactoryImpl") at runtime, so R8
-# must not rename or remove any class in the csskit package.
--keep class cz.vutbr.web.css.** { *; }
--keep class cz.vutbr.web.csskit.** { *; }
--keep class cz.vutbr.web.domassign.** { *; }
--keep class org.w3c.css.sac.** { *; }
+# Keep only Cz CSSKit reflection target since RuleFactoryImpl is loaded dynamically
+-keep class cz.vutbr.web.csskit.RuleFactoryImpl { *; }
 -dontwarn cz.vutbr.web.**
 -dontwarn org.w3c.css.sac.**
+# Keep PreferenceManager and all its methods intact for Xposed preference mode hook and dynamic preference access
+-keep class androidx.preference.PreferenceManager { *; }
 
-# OkHttp/Okio
--keep class okhttp3.** { *; }
--keep class okio.** { *; }
+# Keep DevKit Unobfuscator packages completely intact to preserve stack trace method signatures and avoid cache collisions
+-keep class com.waenhancer.xposed.core.devkit.** { *; }
+
+# DexKit and OkHttp warning suppression (R8 handles OKHttp automatically)
+-keep class io.luckypray.dexkit.** { *; }
+-keep class org.luckypray.dexkit.** { *; }
+-dontwarn io.luckypray.dexkit.**
+-dontwarn org.luckypray.dexkit.**
 -dontwarn okhttp3.**
 -dontwarn okio.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.slf4j.**
 
-# Keep all UI fragments and enclosing classes to prevent reflection/XML lookup failures
--keep class com.waenhancer.ui.fragments.** { *; }
--keep class com.waenhancer.xposed.features.others.** { *; }
--keep class * extends androidx.fragment.app.Fragment { *; }
+# Firebase reflection safety
+-dontwarn com.google.firebase.**
+-keep class com.google.firebase.** { *; }
