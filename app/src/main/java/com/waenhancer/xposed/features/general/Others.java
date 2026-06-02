@@ -295,19 +295,163 @@ public class Others extends Feature {
         }
 
         if (prefs.getBoolean("selectable_message", false)) {
+            XposedBridge.log("[WAEX] selectable_message option enabled (Option 2)");
             ConversationItemListener.conversationListeners.add(new ConversationItemListener.OnConversationItemListener() {
                 @Override
                 public void onItemBind(FMessageWpp fMessage, ViewGroup viewGroup) {
                     try {
                         var messageTextView = (TextView) viewGroup.findViewById(Utils.getID("message_text", "id"));
                         if (messageTextView != null) {
-                            messageTextView.setTextIsSelectable(true);
+                            // Dynamically scan and toggle the custom formatting switches (A03 / A00) to false
+                            try {
+                                Class<?> cls = messageTextView.getClass();
+                                while (cls != null && cls != TextView.class) {
+                                    if (cls.getName().contains("TextEmojiLabel")) {
+                                        try {
+                                            java.lang.reflect.Field f = cls.getDeclaredField("A03");
+                                            f.setAccessible(true);
+                                            f.setBoolean(messageTextView, false);
+                                            XposedBridge.log("[WAEX] Disabled TextEmojiLabel custom formatting switch (A03)");
+                                        } catch (NoSuchFieldException e) {
+                                            for (java.lang.reflect.Field field : cls.getDeclaredFields()) {
+                                                if (field.getType() == boolean.class && !java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                                                    field.setAccessible(true);
+                                                    field.setBoolean(messageTextView, false);
+                                                    XposedBridge.log("[WAEX] Disabled TextEmojiLabel custom formatting switch (fallback: " + field.getName() + ")");
+                                                }
+                                            }
+                                        }
+                                        break;
+                                    } else if (cls.getName().contains("WDSRichTextView")) {
+                                        try {
+                                            java.lang.reflect.Field f = cls.getDeclaredField("A00");
+                                            f.setAccessible(true);
+                                            f.setBoolean(messageTextView, false);
+                                            XposedBridge.log("[WAEX] Disabled WDSRichTextView custom formatting switch (A00)");
+                                        } catch (NoSuchFieldException e) {
+                                            for (java.lang.reflect.Field field : cls.getDeclaredFields()) {
+                                                if (field.getType() == boolean.class && !java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                                                    field.setAccessible(true);
+                                                    field.setBoolean(messageTextView, false);
+                                                    XposedBridge.log("[WAEX] Disabled WDSRichTextView custom formatting switch (fallback: " + field.getName() + ")");
+                                                }
+                                            }
+                                        }
+                                        break;
+                                    }
+                                    cls = cls.getSuperclass();
+                                }
+                            } catch (Throwable t) {
+                                XposedBridge.log("[WAEX] Error disabling custom switches: " + t.toString());
+                            }
+
+                            // Clear any existing Touch/LongClick listeners registered by WhatsApp
+                            messageTextView.setOnTouchListener(null);
+                            messageTextView.setOnLongClickListener(null);
+
+                            if (messageTextView.getTag(com.waenhancer.R.id.wae_device_source_guard) == null) {
+                                XposedBridge.log("[WAEX] messageTextView bound: " + messageTextView.getClass().getName() + " text: " + messageTextView.getText());
+                                messageTextView.setTextIsSelectable(true);
+                                messageTextView.setFocusable(true);
+                                messageTextView.setFocusableInTouchMode(true);
+                                messageTextView.setClickable(true);
+                                messageTextView.setLongClickable(true);
+                                messageTextView.setHighlightColor(0x66007FFF); // Semi-transparent blue highlight
+                                messageTextView.setMovementMethod(android.text.method.ArrowKeyMovementMethod.getInstance());
+                                
+                                // Re-set the text to force a selectability-friendly Spannable layout
+                                CharSequence currentText = messageTextView.getText();
+                                if (currentText != null) {
+                                    messageTextView.setText(currentText, android.widget.TextView.BufferType.SPANNABLE);
+                                }
+
+                                messageTextView.setTag(com.waenhancer.R.id.wae_device_source_guard, true);
+                            }
                         }
                     } catch (Throwable t) {
                         logDebug("Selectable message bind error", t);
                     }
                 }
             });
+
+            // Prevent custom touch listeners and long click listeners from being set on the message bubbles
+            try {
+                XposedHelpers.findAndHookMethod(android.view.View.class, "setOnTouchListener", android.view.View.OnTouchListener.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        View v = (View) param.thisObject;
+                        if (v.getId() == Utils.getID("message_text", "id")) {
+                            param.setResult(null); // Block listener registration
+                        }
+                    }
+                });
+            } catch (Throwable t) {
+                XposedBridge.log("[WAEX] Failed to hook setOnTouchListener: " + t.toString());
+            }
+
+            try {
+                XposedHelpers.findAndHookMethod(android.view.View.class, "setOnLongClickListener", android.view.View.OnLongClickListener.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        View v = (View) param.thisObject;
+                        if (v.getId() == Utils.getID("message_text", "id")) {
+                            param.setResult(null); // Block listener registration
+                        }
+                    }
+                });
+            } catch (Throwable t) {
+                XposedBridge.log("[WAEX] Failed to hook setOnLongClickListener: " + t.toString());
+            }
+
+            // Hook onTouchEvent on TextEmojiLabel to ensure parent scroll disallowance during drags
+            Class<?> textEmojiLabelClass = null;
+            try {
+                textEmojiLabelClass = XposedHelpers.findClass("com.whatsapp.ui.coreui.base.TextEmojiLabel", classLoader);
+            } catch (XposedHelpers.ClassNotFoundError e) {
+                try {
+                    textEmojiLabelClass = XposedHelpers.findClass("com.whatsapp.TextEmojiLabel", classLoader);
+                } catch (XposedHelpers.ClassNotFoundError ignored) {}
+            }
+
+            if (textEmojiLabelClass != null) {
+                try {
+                    XposedHelpers.findAndHookMethod(textEmojiLabelClass, "onTouchEvent", android.view.MotionEvent.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            TextView tv = (TextView) param.thisObject;
+                            if (tv.getId() == Utils.getID("message_text", "id")) {
+                                android.view.ViewParent p = tv.getParent();
+                                while (p != null) {
+                                    p.requestDisallowInterceptTouchEvent(true);
+                                    p = p.getParent();
+                                }
+                            }
+                        }
+                    });
+                } catch (Throwable t) {
+                    XposedBridge.log("[WAEX] Failed to hook TextEmojiLabel.onTouchEvent: " + t.toString());
+                }
+            }
+
+            // Hook onTouchEvent on WDSRichTextView to ensure parent scroll disallowance during drags
+            try {
+                Class<?> wdsRichTextViewClass = XposedHelpers.findClass("com.whatsapp.ui.wds.components.richtextview.WDSRichTextView", classLoader);
+                XposedHelpers.findAndHookMethod(wdsRichTextViewClass, "onTouchEvent", android.view.MotionEvent.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        TextView tv = (TextView) param.thisObject;
+                        if (tv.getId() == Utils.getID("message_text", "id")) {
+                            android.view.ViewParent p = tv.getParent();
+                            while (p != null) {
+                                p.requestDisallowInterceptTouchEvent(true);
+                                p = p.getParent();
+                            }
+                        }
+                    }
+                });
+            } catch (Throwable t) {
+                XposedBridge.log("[WAEX] Failed to hook WDSRichTextView.onTouchEvent: " + t.toString());
+            }
         }
 
         try {

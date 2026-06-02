@@ -486,53 +486,7 @@ public class FeatureLoader {
                             ((XSharedPreferences) pref).reload();
                         }
 
-                        // Only check WppCore's local prefs for restart flag.
-                        // XSharedPreferences is READ-ONLY — we cannot clear flags there,
-                        // so we must not read them from there either.
-                        boolean needRestart = WppCore.getPrivBoolean("need_restart", false);
-
-                        if (needRestart && !isRestartDialogShowing && isHomeActivity(activity)) {
-                            activity.invalidateOptionsMenu();
-                            isRestartDialogShowing = true;
-                            String msg = getModuleString(ResId.string.restart_wpp);
-                            String btnRestart = getModuleString(ResId.string.restart_whatsapp);
-                            String btnCancel = getModuleString(android.R.string.cancel);
-
-                            // Show which preferences changed
-                            String changedTitles = WppCore.getPrivString("pending_changes", "");
-                            if (!changedTitles.isEmpty()) {
-                                StringBuilder sb = new StringBuilder();
-                                if (!msg.isEmpty()) sb.append(msg).append("\n\n");
-                                else sb.append("WhatsApp needs to be restarted to apply the following changes:\n\n");
-                                sb.append("Changes:\n");
-                                for (String title : changedTitles.split("\\|")) {
-                                    if (!title.trim().isEmpty()) {
-                                        sb.append("• ").append(title.trim()).append("\n");
-                                    }
-                                }
-                                msg = sb.toString().trim();
-                            }
-
-                            if (msg.isEmpty()) msg = "WhatsApp needs to be restarted to apply your recent changes in WaEnhancer X. Would you like to restart now?";
-                            if (btnRestart.isEmpty()) btnRestart = "Restart WhatsApp";
-                            if (btnCancel.isEmpty()) btnCancel = "Cancel";
-
-                            new AlertDialogWpp(activity)
-                                    .setTitle("Restart Required")
-                                    .setMessage(msg)
-                                    .setPositiveButton(btnRestart, (dialog, which) -> {
-                                        isRestartDialogShowing = false;
-                                        WppCore.setPrivBooleanSync("need_restart", false);
-                                        WppCore.setPrivString("pending_changes", "");
-                                        Utils.doRestart(activity);
-                                    })
-                                    .setNegativeButton(btnCancel, (dialog, which) -> {
-                                        isRestartDialogShowing = false;
-                                        WppCore.setPrivBooleanSync("need_restart", false);
-                                        WppCore.setPrivString("pending_changes", "");
-                                    })
-                                    .show();
-                        }
+                        showRestartDialog(activity);
                     } catch (Throwable e) {
                         XposedBridge.log("[WAEX] Error during activity resume check: " + e.getMessage());
                     } finally {
@@ -629,6 +583,23 @@ public class FeatureLoader {
                         WppCore.setPrivString("pending_changes", String.join("|", all));
                     }
                 } catch (Exception ignored) {}
+
+                // Force reload of preferences on change
+                if (Utils.xprefs instanceof de.robv.android.xposed.XSharedPreferences) {
+                    ((de.robv.android.xposed.XSharedPreferences) Utils.xprefs).reload();
+                }
+
+                // Show the restart dialog promptly if an activity is active
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    try {
+                        Activity current = WppCore.getCurrentActivity();
+                        if (current != null && !current.isFinishing()) {
+                            showRestartDialog(current);
+                        }
+                    } catch (Throwable t) {
+                        XposedBridge.log("[WAEX] Failed to show restart dialog on broadcast: " + t.getMessage());
+                    }
+                });
             }
         };
         ContextCompat.registerReceiver(mApp, restartManualReceiver,
@@ -1019,6 +990,57 @@ public class FeatureLoader {
                 XposedBridge.log("[WAEX] Error showing beta dialog in host: " + t.getMessage());
             }
         });
+    }
+
+    public static void showRestartDialog(Activity activity) {
+        if (activity == null || activity.isFinishing()) return;
+        try {
+            boolean needRestart = WppCore.getPrivBoolean("need_restart", false);
+            if (needRestart && !isRestartDialogShowing) {
+                isRestartDialogShowing = true;
+                activity.invalidateOptionsMenu();
+                String msg = getModuleString(ResId.string.restart_wpp);
+                String btnRestart = getModuleString(ResId.string.restart_whatsapp);
+                String btnCancel = getModuleString(android.R.string.cancel);
+
+                // Show which preferences changed
+                String changedTitles = WppCore.getPrivString("pending_changes", "");
+                if (!changedTitles.isEmpty()) {
+                    StringBuilder sb = new StringBuilder();
+                    if (!msg.isEmpty()) sb.append(msg).append("\n\n");
+                    else sb.append("WhatsApp needs to be restarted to apply the following changes:\n\n");
+                    sb.append("Changes:\n");
+                    for (String title : changedTitles.split("\\|")) {
+                        if (!title.trim().isEmpty()) {
+                            sb.append("• ").append(title.trim()).append("\n");
+                        }
+                    }
+                    msg = sb.toString().trim();
+                }
+
+                if (msg.isEmpty()) msg = "WhatsApp needs to be restarted to apply your recent changes in WaEnhancer X. Would you like to restart now?";
+                if (btnRestart.isEmpty()) btnRestart = "Restart WhatsApp";
+                if (btnCancel.isEmpty()) btnCancel = "Cancel";
+
+                new AlertDialogWpp(activity)
+                        .setTitle("Restart Required")
+                        .setMessage(msg)
+                        .setPositiveButton(btnRestart, (dialog, which) -> {
+                            isRestartDialogShowing = false;
+                            WppCore.setPrivBooleanSync("need_restart", false);
+                            WppCore.setPrivString("pending_changes", "");
+                            Utils.doRestart(activity);
+                        })
+                        .setNegativeButton(btnCancel, (dialog, which) -> {
+                            isRestartDialogShowing = false;
+                            WppCore.setPrivBooleanSync("need_restart", false);
+                            WppCore.setPrivString("pending_changes", "");
+                        })
+                        .show();
+            }
+        } catch (Throwable e) {
+            XposedBridge.log("[WAEX] Error showing restart dialog: " + e.getMessage());
+        }
     }
 
     private static class ErrorItem {
