@@ -10,6 +10,7 @@ import android.view.View;
 import android.widget.ImageButton;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
@@ -55,10 +56,11 @@ public class AudioPlayerDialog extends Dialog {
         try {
             mediaPlayer.setDataSource(audioFile.getAbsolutePath());
             mediaPlayer.prepare();
-        } catch (IOException e) {
-            mediaPlayer.release();
-            mediaPlayer = null;
-            dismiss();
+        } catch (Exception e) {
+            if (mediaPlayer != null) {
+                mediaPlayer.release();
+                mediaPlayer = null;
+            }
             return;
         }
 
@@ -140,6 +142,15 @@ public class AudioPlayerDialog extends Dialog {
         }
         mediaPlayer.release();
         mediaPlayer = null;
+    }
+
+    @Override
+    public void show() {
+        if (mediaPlayer == null) {
+            Toast.makeText(getContext(), R.string.recording_play_failed, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        super.show();
     }
 
     @NonNull

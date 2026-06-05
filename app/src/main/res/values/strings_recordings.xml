@@ -27,6 +27,7 @@
     <string name="delete">Delete</string>
     <string name="recording_delete_failed">Failed to delete recording</string>
     <string name="recording_share_failed">Could not share recording: %1$s</string>
+    <string name="recording_play_failed">Failed to play recording</string>
     <string name="recording_deleted_count">Deleted %d recordings</string>
 
     <string name="call_recording_settings">Recording Settings</string>

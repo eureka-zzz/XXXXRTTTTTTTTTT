@@ -9,6 +9,7 @@
 - Optimized conversation messages scroll to avoid lags
 
 [Fixes]
+- Fixed crash in recordings audio player when loading corrupt or unplayable audio files
 - Fixed CustomView Plugin Error
 - Fixed MODE_WORLD_READABLE exception
 - Fixed My Status Views
