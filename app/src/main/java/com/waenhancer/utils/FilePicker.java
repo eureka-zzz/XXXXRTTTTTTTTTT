@@ -25,6 +25,21 @@ public class FilePicker {
         imageCapture = activity.registerForActivityResult(new ActivityResultContracts.PickVisualMedia(), FilePicker::setFile);
         directoryCapture = activity.registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), FilePicker::setDirectory);
         fileSalve = activity.registerForActivityResult(new ActivityResultContracts.CreateDocument("*/*"), FilePicker::setFile);
+
+        activity.getLifecycle().addObserver(new androidx.lifecycle.LifecycleEventObserver() {
+            @Override
+            public void onStateChanged(androidx.lifecycle.LifecycleOwner source, androidx.lifecycle.Lifecycle.Event event) {
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_DESTROY) {
+                    if (mActivity == activity) {
+                        fileCapture = null;
+                        imageCapture = null;
+                        directoryCapture = null;
+                        fileSalve = null;
+                        mActivity = null;
+                    }
+                }
+            }
+        });
     }
 
     private static void setFile(Uri uri) {

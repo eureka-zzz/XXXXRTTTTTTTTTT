@@ -13,6 +13,7 @@ import androidx.fragment.app.FragmentManager;
 
 import com.waenhancer.R;
 import com.waenhancer.activities.base.BaseActivity;
+import com.waenhancer.utils.FilePicker;
 
 /**
  * A lightweight activity in the MODULE's own process that hosts
@@ -38,6 +39,8 @@ public class EmbeddedSettingsActivity extends BaseActivity {
         mContainerId = View.generateViewId();
         container.setId(mContainerId);
         setContentView(container);
+
+        FilePicker.registerFilePicker(this);
 
         if (savedInstanceState == null) {
             getSupportFragmentManager()

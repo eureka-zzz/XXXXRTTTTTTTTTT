@@ -1,11 +1,10 @@
 [Added]
-- Added Always Typing / Recording Voice Feature
+- [Pro] Added Always Typing / Recording Voice Feature
 - Customize Status View
     * [Pro] Added Disable Swipe Up to Reply
 
 
 [Improvements]
-- Improved some ui elements
 - Optimized conversation messages scroll to avoid lags
 
 [Fixes]
