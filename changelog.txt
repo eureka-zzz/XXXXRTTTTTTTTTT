@@ -1,5 +1,5 @@
 [Added]
-
+Added support for WA/WB 2.26.23.xx
 
 [Improvements]
 - Optimized conversation messages scroll to avoid lags
@@ -7,3 +7,4 @@
 [Fixes]
 - Fixed sending file as audio note
 - Fixed Hide Blue Ticks
+- Fixed Hide Typing & Recording Voice
