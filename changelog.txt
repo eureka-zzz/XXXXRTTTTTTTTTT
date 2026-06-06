@@ -3,9 +3,10 @@ Added support for WA/WB 2.26.23.xx
 
 [Improvements]
 - Include one-time db optimization for better performance (Dialog will show only once)
+- Module's ui Improvements
 
 [Fixes]
-- Fixed sending file as audio note
+- Fixed sending file as voice note
 - Fixed Hide Blue Ticks
 - Fixed Hide Typing & Recording Voice
 - Fixed Group/Chats Counter when Separate Groups is Enabled

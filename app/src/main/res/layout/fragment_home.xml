@@ -34,7 +34,7 @@
                 android:orientation="vertical"
                 android:paddingHorizontal="20dp"
                 android:paddingTop="24dp"
-                android:paddingBottom="32dp"
+                android:paddingBottom="112dp"
                 tools:context=".ui.activity.MainActivity">
 
                 <!-- ═══════════════════════════════════════════ -->

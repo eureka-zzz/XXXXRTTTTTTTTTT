@@ -26,6 +26,8 @@
         <!-- Expressive Material 3 Defaults -->
         <item name="materialButtonStyle">@style/Widget.Material3.Button</item>
         <item name="materialCardViewStyle">@style/Widget.Material3.CardView.Elevated</item>
+        <item name="glassCardBackgroundColor">@color/glass_background_light</item>
+        <item name="glassCardStrokeColor">@color/glass_stroke_light</item>
     </style>
 
     <style name="Theme.Light" parent="Base.AppTheme.Light" />
@@ -65,6 +67,8 @@
         <!-- Expressive Material 3 Defaults -->
         <item name="materialButtonStyle">@style/Widget.Material3.Button</item>
         <item name="materialCardViewStyle">@style/Widget.Material3.CardView.Elevated</item>
+        <item name="glassCardBackgroundColor">@color/glass_background_dark</item>
+        <item name="glassCardStrokeColor">@color/glass_stroke_dark</item>
     </style>
 
     <style name="MyActionBar" parent="@style/Widget.Material3.ActionBar.Solid">
@@ -143,9 +147,33 @@
         <item name="itemTextAppearanceInactive">@style/BottomNavInactiveText</item>
     </style>
 
+    <!-- Floating Bottom Toolbar style — used inside the pill-shaped MaterialCardView -->
+    <style name="FloatingBottomNavStyle" parent="Widget.Material3.BottomNavigationView">
+        <item name="labelVisibilityMode">labeled</item>
+        <item name="android:minHeight">68dp</item>
+        <item name="elevation">0dp</item>
+        <item name="android:background">@android:color/transparent</item>
+        <item name="itemIconSize">24dp</item>
+        <item name="itemIconTint">@color/bottom_nav_icon_color</item>
+        <item name="itemTextColor">@color/bottom_nav_text_color</item>
+        <item name="itemActiveIndicatorStyle">@style/FloatingNavActiveIndicator</item>
+        <item name="itemTextAppearanceActive">@style/BottomNavActiveText</item>
+        <item name="itemTextAppearanceInactive">@style/BottomNavInactiveText</item>
+        <item name="android:paddingTop">4dp</item>
+        <item name="android:paddingBottom">4dp</item>
+    </style>
+
     <style name="NavActiveIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
         <item name="android:color">?attr/colorPrimaryContainer</item>
         <item name="shapeAppearance">@style/ShapeAppearance.Material3.Corner.Full</item>
+    </style>
+
+    <!-- Rounder, slightly taller pill indicator for the floating toolbar -->
+    <style name="FloatingNavActiveIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">?attr/colorPrimaryContainer</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Material3.Corner.Full</item>
+        <item name="android:width">64dp</item>
+        <item name="android:height">36dp</item>
     </style>
 
     <style name="BottomNavActiveText" parent="TextAppearance.Material3.LabelSmall">

@@ -132,6 +132,26 @@ public abstract class BasePreferenceFragment extends PreferenceFragmentCompat
     }
 
     @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+        // Add bottom padding so the last preference items are not hidden
+        // behind the floating bottom navigation pill.
+        try {
+            androidx.recyclerview.widget.RecyclerView recyclerView = getListView();
+            if (recyclerView != null) {
+                int bottomPaddingPx = (int) (112 * requireContext().getResources().getDisplayMetrics().density);
+                recyclerView.setPadding(
+                        recyclerView.getPaddingLeft(),
+                        recyclerView.getPaddingTop(),
+                        recyclerView.getPaddingRight(),
+                        bottomPaddingPx
+                );
+                recyclerView.setClipToPadding(false);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    @Override
     public void onResume() {
         super.onResume();
         if (mPrefs != null) {

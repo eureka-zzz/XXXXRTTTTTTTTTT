@@ -41,6 +41,8 @@
 
     <attr name="colorNormal" format="color" />
     <attr name="colorInstall" format="color" />
+    <attr name="glassCardBackgroundColor" format="color" />
+    <attr name="glassCardStrokeColor" format="color" />
 
     <declare-styleable name="FileSelectPreference">
         <attr name="android:entryValues" />
