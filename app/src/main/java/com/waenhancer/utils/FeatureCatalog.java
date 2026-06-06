@@ -251,6 +251,14 @@ public class FeatureCatalog {
                                 "homescreen",
                                 Arrays.asList("separate", "groups", "filter")));
 
+                catalog.add(new SearchableFeature("separategroups_counter_type",
+                                context.getString(R.string.separate_groups_counter_title),
+                                context.getString(R.string.separate_groups_counter_sum),
+                                SearchableFeature.Category.GENERAL_HOMESCREEN,
+                                SearchableFeature.FragmentType.GENERAL,
+                                "homescreen",
+                                Arrays.asList("separate", "groups", "counter", "type", "unread", "messages", "conversations")));
+
                 catalog.add(new SearchableFeature("filtergroups",
                                 context.getString(R.string.new_ui_group_filter),
                                 context.getString(R.string.new_ui_group_filter_sum),

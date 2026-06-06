@@ -100,6 +100,10 @@ public class Unobfuscator {
         return true;
     }
 
+    public static DexKitBridge getDexKit() {
+        return dexkit;
+    }
+
     // TODO: Functions to find classes and methods
     public synchronized static Method findFirstMethodUsingStrings(ClassLoader classLoader, StringMatchType type,
                                                                   String... strings) throws Exception {
@@ -624,28 +628,53 @@ public class Unobfuscator {
         });
     }
 
-    public synchronized static Constructor loadEnableCountTabBadgeWrapper(ClassLoader classLoader) throws Exception {
-        return UnobfuscatorCache.getInstance().getConstructor(classLoader, () -> {
+    public synchronized static Class<?> loadEnableCountTabBadgeWrapperClass(ClassLoader classLoader) throws Exception {
+        return UnobfuscatorCache.getInstance().getClass(classLoader, () -> {
             var countMethod = loadEnableCountTabMethod(classLoader);
             var indiceClass = countMethod.getParameterTypes()[1];
-            var result = dexkit.findClass(FindClass.create().matcher(ClassMatcher.create()
-                    .superClass(indiceClass.getName()).addMethod(MethodMatcher.create().paramCount(1))));
-            if (result.isEmpty())
-                throw new Exception("EnableCountTab method not found");
-            return result.get(0).getInstance(classLoader).getConstructors()[0];
+            var subclasses = dexkit.findClass(FindClass.create().matcher(ClassMatcher.create()
+                    .superClass(indiceClass.getName())));
+            for (var clsData : subclasses) {
+                Class<?> cls = clsData.getInstance(classLoader);
+                for (var ctor : cls.getDeclaredConstructors()) {
+                    if (ctor.getParameterCount() > 0) {
+                        return cls;
+                    }
+                }
+            }
+            throw new Exception("Badge wrapper class not found");
+        });
+    }
+
+    public synchronized static Constructor loadEnableCountTabBadgeWrapper(ClassLoader classLoader) throws Exception {
+        return UnobfuscatorCache.getInstance().getConstructor(classLoader, () -> {
+            Class<?> wrapperClass = loadEnableCountTabBadgeWrapperClass(classLoader);
+            for (var ctor : wrapperClass.getDeclaredConstructors()) {
+                if (ctor.getParameterCount() > 0) {
+                    ctor.setAccessible(true);
+                    return ctor;
+                }
+            }
+            throw new Exception("Badge wrapper constructor not found");
         });
     }
 
     public synchronized static Constructor loadEnableCountTabBadgeItem(ClassLoader classLoader) throws Exception {
         return UnobfuscatorCache.getInstance().getConstructor(classLoader, () -> {
-            var countTabConstructor1 = loadEnableCountTabBadgeWrapper(classLoader);
-            var indiceClass = countTabConstructor1.getParameterTypes()[0];
-            var result = dexkit
-                    .findClass(FindClass.create().matcher(ClassMatcher.create().superClass(indiceClass.getName())
-                            .addMethod(MethodMatcher.create().paramCount(1).addParamType(int.class))));
-            if (result.isEmpty())
-                throw new Exception("EnableCountTab method not found");
-            return result.get(0).getInstance(classLoader).getConstructors()[0];
+            var wrapperCtor = loadEnableCountTabBadgeWrapper(classLoader);
+            var indiceClass = wrapperCtor.getParameterTypes()[0];
+            var subclasses = dexkit.findClass(FindClass.create().matcher(ClassMatcher.create()
+                    .superClass(indiceClass.getName())));
+            for (var clsData : subclasses) {
+                Class<?> cls = clsData.getInstance(classLoader);
+                for (var ctor : cls.getDeclaredConstructors()) {
+                    if (ctor.getParameterCount() == 1 && ctor.getParameterTypes()[0] == int.class) {
+                        ctor.setAccessible(true);
+                        return ctor;
+                    }
+                }
+            }
+            throw new Exception("Badge item constructor not found");
         });
     }
 
@@ -653,11 +682,17 @@ public class Unobfuscator {
         return UnobfuscatorCache.getInstance().getClass(classLoader, () -> {
             var countMethod = loadEnableCountTabMethod(classLoader);
             var indiceClass = countMethod.getParameterTypes()[1];
-            var result = dexkit.findClass(FindClass.create().matcher(ClassMatcher.create()
-                    .superClass(indiceClass.getName()).addMethod(MethodMatcher.create().paramCount(0))));
-            if (result.isEmpty())
-                throw new Exception("EnableCountTab method not found");
-            return result.get(0).getInstance(classLoader);
+            var subclasses = dexkit.findClass(FindClass.create().matcher(ClassMatcher.create()
+                    .superClass(indiceClass.getName())));
+            for (var clsData : subclasses) {
+                Class<?> cls = clsData.getInstance(classLoader);
+                for (var ctor : cls.getDeclaredConstructors()) {
+                    if (ctor.getParameterCount() == 0) {
+                        return cls;
+                    }
+                }
+            }
+            throw new Exception("Empty badge class not found");
         });
     }
     // TODO: Classes and methods to TimeToSeconds

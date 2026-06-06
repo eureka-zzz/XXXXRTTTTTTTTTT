@@ -258,7 +258,8 @@ public class MessageStore {
             return null;
         }
 
-        String sql =
+        List<Long> chatRowIds = new ArrayList<>();
+        String resolveSql =
             "WITH resolved(jid_row_id) AS (\n" +
             "    SELECT _id FROM jid WHERE raw_string=?\n" +
             "    UNION\n" +
@@ -269,22 +270,39 @@ public class MessageStore {
             "    SELECT jm.lid_row_id FROM jid_map jm\n" +
             "    INNER JOIN jid j ON j._id = jm.jid_row_id\n" +
             "    WHERE j.raw_string=?\n" +
-            "), chat_target AS (\n" +
-            "    SELECT _id FROM chat WHERE jid_row_id IN (SELECT jid_row_id FROM resolved)\n" +
             ")\n" +
-            "SELECT m._id, m.sort_id, m.chat_row_id\n" +
-            "FROM message m\n" +
-            "INNER JOIN chat_target c ON c._id = m.chat_row_id\n" +
-            "ORDER BY m.sort_id ASC, m._id ASC\n" +
-            "LIMIT 1";
+            "SELECT _id FROM chat WHERE jid_row_id IN (SELECT jid_row_id FROM resolved)";
 
-        try (Cursor cursor = db.rawQuery(sql, new String[]{rawJid, rawJid, rawJid})) {
-            if (cursor.moveToFirst()) {
-                return new MessageInfo(cursor.getLong(0), cursor.getLong(1), cursor.getLong(2));
+        try (Cursor cursor = db.rawQuery(resolveSql, new String[]{rawJid, rawJid, rawJid})) {
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    chatRowIds.add(cursor.getLong(0));
+                }
             }
         } catch (Exception e) {
             XposedBridge.log(e);
         }
-        return null;
+
+        if (chatRowIds.isEmpty()) {
+            return null;
+        }
+
+        MessageInfo firstMsg = null;
+        for (long chatRowId : chatRowIds) {
+            String msgSql = "SELECT _id, sort_id, chat_row_id FROM message WHERE chat_row_id = ? ORDER BY sort_id ASC, _id ASC LIMIT 1";
+            try (Cursor cursor = db.rawQuery(msgSql, new String[]{String.valueOf(chatRowId)})) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    long rowId = cursor.getLong(0);
+                    long sortId = cursor.getLong(1);
+                    MessageInfo info = new MessageInfo(rowId, sortId, chatRowId);
+                    if (firstMsg == null || sortId < firstMsg.sortId || (sortId == firstMsg.sortId && rowId < firstMsg.rowId)) {
+                        firstMsg = info;
+                    }
+                }
+            } catch (Exception e) {
+                XposedBridge.log(e);
+            }
+        }
+        return firstMsg;
     }
 }

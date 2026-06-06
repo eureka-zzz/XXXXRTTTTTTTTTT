@@ -21,9 +21,12 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -84,9 +87,25 @@ public class SeparateGroup extends Feature {
         return "Separate Group";
     }
 
+    private static Object getEmptyBadge(Class emptyBadgeClass) {
+        try {
+            for (java.lang.reflect.Field f : emptyBadgeClass.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) && f.getType() == emptyBadgeClass) {
+                    f.setAccessible(true);
+                    return f.get(null);
+                }
+            }
+            java.lang.reflect.Constructor ctor = emptyBadgeClass.getDeclaredConstructor();
+            ctor.setAccessible(true);
+            return ctor.newInstance();
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
     @SuppressLint("Range")
     private void hookTabCount() {
         try {
+            XposedBridge.log("[WAEX-SG] hookTabCount starting...");
             Method runMethod = Unobfuscator.loadTabCountMethod(classLoader);
             logDebug(Unobfuscator.getMethodDescriptor(runMethod));
 
@@ -94,112 +113,171 @@ public class SeparateGroup extends Feature {
             Constructor<?> badgeWrapperConstructor = Unobfuscator.loadEnableCountTabBadgeWrapper(classLoader);
             Constructor<?> badgeItemConstructor = Unobfuscator.loadEnableCountTabBadgeItem(classLoader);
             Class<?> emptyBadgeClass = Unobfuscator.loadEnableCountTabEmptyBadgeClass(classLoader);
-            logDebug(Unobfuscator.getMethodDescriptor(enableCountMethod));
+            XposedBridge.log("[WAEX-SG] enableCountMethod found: " + enableCountMethod);
 
             XposedBridge.hookMethod(enableCountMethod, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                     int indexTab = (int) param.args[2];
-                    if (indexTab == tabs.indexOf(CHATS)) {
-                        param.setResult(null);
+                    int chatsIdx = tabs.indexOf(CHATS);
+                    // Only intercept the CHATS badge call (which carries the total unread count).
+                    // We then split it into separate CHATS and GROUPS counts from the DB.
+                    XposedBridge.log("[WAEX-SG] badge call: indexTab=" + indexTab
+                            + " chatsIdx=" + chatsIdx
+                            + " groupsIdx=" + tabs.indexOf(GROUPS)
+                            + " tabs=" + tabs
+                            + " tabInstances=" + tabInstances.keySet());
+                    if (indexTab != chatsIdx) return;
+                    param.setResult(null);
 
-                        new Thread(() -> {
+                    Object originalBadge = param.args[1];
+                    XposedBridge.log("[WAEX-SG] Original badge: " + originalBadge 
+                            + " class=" + (originalBadge != null ? originalBadge.getClass().getName() : "null"));
+                    if (originalBadge != null) {
+                        for (Field f : originalBadge.getClass().getDeclaredFields()) {
                             try {
-                                int chatCount = 0;
-                                int groupCount = 0;
-                                SQLiteDatabase db = MessageStore.getInstance().getDatabase();
-                                if (db != null) {
-                                    try {
-                                        String sql = "SELECT c.*, j.server AS jid_server " +
-                                                "FROM chat c " +
-                                                "LEFT JOIN jid j ON c.jid_row_id = j._id " +
-                                                "WHERE c.unseen_message_count != 0";
-
-                                        Cursor cursor = db.rawQuery(sql, null);
-                                        if (cursor != null) {
-                                            try {
-                                                int idxGroupType = cursor.getColumnIndex("group_type");
-                                                int idxArchived = cursor.getColumnIndex("archived");
-                                                int idxChatLock = cursor.getColumnIndex("chat_lock");
-                                                int idxServer = cursor.getColumnIndex("jid_server");
-
-                                                while (cursor.moveToNext()) {
-                                                    int groupType = idxGroupType >= 0 ? cursor.getInt(idxGroupType) : 0;
-                                                    int archived = idxArchived >= 0 ? cursor.getInt(idxArchived) : 0;
-                                                    int chatLocked = idxChatLock >= 0 ? cursor.getInt(idxChatLock) : 0;
-
-                                                    if (archived != 0 || (groupType != 0 && groupType != 6) || chatLocked != 0) {
-                                                        continue;
-                                                    }
-
-                                                    if (idxServer >= 0) {
-                                                        String server = cursor.getString(idxServer);
-                                                        if ("g.us".equals(server)) {
-                                                            groupCount++;
-                                                        } else {
-                                                            chatCount++;
-                                                        }
-                                                    }
-                                                }
-                                            } finally {
-                                                cursor.close();
-                                            }
-                                        }
-                                    } catch (Throwable t) {
-                                        XposedBridge.log("SeparateGroup DB Error: " + t);
+                                f.setAccessible(true);
+                                XposedBridge.log("[WAEX-SG]   Field " + f.getName() + " type " + f.getType().getName() + " = " + f.get(originalBadge));
+                                Object val = f.get(originalBadge);
+                                if (val != null) {
+                                    for (Field f2 : val.getClass().getDeclaredFields()) {
+                                        try {
+                                            f2.setAccessible(true);
+                                            XposedBridge.log("[WAEX-SG]     Subfield " + f2.getName() + " type " + f2.getType().getName() + " = " + f2.get(val));
+                                        } catch (Throwable ignored) {}
                                     }
                                 }
+                            } catch (Throwable ignored) {}
+                        }
+                    }
 
-                                final int finalChatCount = chatCount;
-                                final int finalGroupCount = groupCount;
-
-                                android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
-                                handler.post(() -> {
-                                    try {
-                                        if (tabs.contains(CHATS) && tabInstances.containsKey(CHATS)) {
-                                            Object chatsBadge;
-                                            if (finalChatCount <= 0) {
-                                                chatsBadge = XposedHelpers.getStaticObjectField(emptyBadgeClass, "A00");
-                                            } else {
-                                                chatsBadge = badgeWrapperConstructor.newInstance(
-                                                        badgeItemConstructor.newInstance(finalChatCount)
-                                                );
-                                            }
-                                            XposedBridge.invokeOriginalMethod(
-                                                    param.method,
-                                                    param.thisObject,
-                                                    new Object[]{param.args[0], chatsBadge, tabs.indexOf(CHATS)}
-                                            );
-                                        }
-
-                                        if (tabs.contains(GROUPS) && tabInstances.containsKey(GROUPS)) {
-                                            Object groupsBadge;
-                                            if (finalGroupCount <= 0) {
-                                                groupsBadge = XposedHelpers.getStaticObjectField(emptyBadgeClass, "A00");
-                                            } else {
-                                                groupsBadge = badgeWrapperConstructor.newInstance(
-                                                        badgeItemConstructor.newInstance(finalGroupCount)
-                                                );
-                                            }
-                                            XposedBridge.invokeOriginalMethod(
-                                                    param.method,
-                                                    param.thisObject,
-                                                    new Object[]{param.args[0], groupsBadge, tabs.indexOf(GROUPS)}
-                                            );
+                    new Thread(() -> {
+                        try {
+                            String counterType = getSafeString("separategroups_counter_type", "conversations");
+                            int chatCount = 0;
+                            int groupCount = 0;
+                            SQLiteDatabase db = MessageStore.getInstance().getDatabase();
+                            XposedBridge.log("[WAEX-SG] DB=" + (db != null ? "OK" : "NULL"));
+                            if (db != null) {
+                                try {
+                                    // Dynamically retrieve existing columns in the 'chat' table
+                                    // to make this extremely robust against schema changes in different versions of WA.
+                                    Set<String> chatColumns = new HashSet<>();
+                                    try (Cursor colCursor = db.rawQuery("SELECT * FROM chat LIMIT 0", null)) {
+                                        if (colCursor != null) {
+                                            chatColumns.addAll(Arrays.asList(colCursor.getColumnNames()));
                                         }
                                     } catch (Throwable t) {
-                                        XposedBridge.log("SeparateGroup: Error setting badges: " + t);
+                                        XposedBridge.log("[WAEX-SG] Schema check failed: " + t);
                                     }
-                                });
-                            } catch (Throwable t) {
-                                XposedBridge.log("SeparateGroup: Error in tab count thread: " + t);
+
+                                    // Build the query dynamically using only verified columns
+                                    StringBuilder queryBuilder = new StringBuilder("SELECT c.unseen_message_count, j.server AS jid_server");
+                                    if (chatColumns.isEmpty() || chatColumns.contains("group_type")) {
+                                        queryBuilder.append(", c.group_type");
+                                    }
+                                    queryBuilder.append(" FROM chat c LEFT JOIN jid j ON c.jid_row_id = j._id WHERE c.unseen_message_count > 0");
+                                    if (chatColumns.isEmpty() || chatColumns.contains("archived")) {
+                                        queryBuilder.append(" AND (c.archived = 0 OR c.archived IS NULL)");
+                                    }
+                                    if (chatColumns.isEmpty() || chatColumns.contains("chat_lock")) {
+                                        queryBuilder.append(" AND (c.chat_lock = 0 OR c.chat_lock IS NULL)");
+                                    }
+
+                                    try (Cursor cursor = db.rawQuery(queryBuilder.toString(), null)) {
+                                        if (cursor != null) {
+                                            int idxUnseen = cursor.getColumnIndex("unseen_message_count");
+                                            int idxServer = cursor.getColumnIndex("jid_server");
+                                            int idxGroupType = cursor.getColumnIndex("group_type");
+
+                                            while (cursor.moveToNext()) {
+                                                // If group_type column exists, filter out community parent / non-standard groups
+                                                if (idxGroupType >= 0) {
+                                                    int groupType = cursor.getInt(idxGroupType);
+                                                    if (groupType != 0 && groupType != 6) {
+                                                        continue;
+                                                    }
+                                                }
+
+                                                int unseen = idxUnseen >= 0 ? cursor.getInt(idxUnseen) : 1;
+                                                if (idxServer >= 0) {
+                                                    String server = cursor.getString(idxServer);
+                                                    int groupTypeVal = idxGroupType >= 0 ? cursor.getInt(idxGroupType) : -1;
+                                                    XposedBridge.log("[WAEX-SG] DB row: server=" + server + " unseen=" + unseen + " group_type=" + groupTypeVal);
+                                                    boolean isGroup = "g.us".equals(server) || "broadcast".equals(server);
+                                                    int increment = "messages".equals(counterType) ? unseen : 1;
+                                                    if (isGroup) {
+                                                        groupCount += increment;
+                                                    } else {
+                                                        chatCount += increment;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (Throwable t) {
+                                    XposedBridge.log("[WAEX-SG] DB Query Error: " + t);
+                                }
                             }
-                        }).start();
-                    }
+
+                            final int finalChatCount = chatCount;
+                            final int finalGroupCount = groupCount;
+                            XposedBridge.log("[WAEX-SG] counts: chat=" + finalChatCount + " group=" + finalGroupCount);
+
+                            android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+                            handler.post(() -> {
+                                try {
+                                    // Set CHATS badge — no tabInstances check; nav view is already set up
+                                    if (tabs.contains(CHATS)) {
+                                        Object chatsBadge;
+                                        if (finalChatCount <= 0) {
+                                            chatsBadge = getEmptyBadge(emptyBadgeClass);
+                                        } else {
+                                            Object badgeItem = badgeItemConstructor.newInstance(finalChatCount);
+                                            if (badgeWrapperConstructor.getParameterTypes().length == 2) {
+                                                chatsBadge = badgeWrapperConstructor.newInstance(badgeItem, String.valueOf(finalChatCount));
+                                            } else {
+                                                chatsBadge = badgeWrapperConstructor.newInstance(badgeItem);
+                                            }
+                                        }
+                                        XposedBridge.log("[WAEX-SG] setChats badge=" + chatsBadge + " idx=" + tabs.indexOf(CHATS));
+                                        XposedBridge.invokeOriginalMethod(
+                                                param.method, param.thisObject,
+                                                new Object[]{param.args[0], chatsBadge, tabs.indexOf(CHATS)});
+                                    }
+
+                                    // Set GROUPS badge — no tabInstances check; nav view is already set up
+                                    if (tabs.contains(GROUPS)) {
+                                        Object groupsBadge;
+                                        if (finalGroupCount <= 0) {
+                                            groupsBadge = getEmptyBadge(emptyBadgeClass);
+                                        } else {
+                                            Object badgeItem = badgeItemConstructor.newInstance(finalGroupCount);
+                                            if (badgeWrapperConstructor.getParameterTypes().length == 2) {
+                                                groupsBadge = badgeWrapperConstructor.newInstance(badgeItem, String.valueOf(finalGroupCount));
+                                            } else {
+                                                groupsBadge = badgeWrapperConstructor.newInstance(badgeItem);
+                                            }
+                                        }
+                                        XposedBridge.log("[WAEX-SG] setGroups badge=" + groupsBadge + " idx=" + tabs.indexOf(GROUPS));
+                                        XposedBridge.invokeOriginalMethod(
+                                                param.method, param.thisObject,
+                                                new Object[]{param.args[0], groupsBadge, tabs.indexOf(GROUPS)});
+                                    }
+                                } catch (Throwable t) {
+                                    XposedBridge.log("[WAEX-SG] Error setting badges: " + t);
+                                }
+                            });
+                        } catch (Throwable t) {
+                            XposedBridge.log("[WAEX-SG] Error in tab count thread: " + t);
+                        }
+                    }).start();
                 }
             });
+            XposedBridge.log("[WAEX-SG] enableCountMethod hooked successfully");
         } catch (Throwable t) {
-            logDebug("hookTabCount error", t);
+            XposedBridge.log("[WAEX-SG] hookTabCount error: " + t);
+            t.printStackTrace();
         }
     }
 
@@ -236,8 +314,10 @@ public class SeparateGroup extends Feature {
                     }
                 }
             });
+            XposedBridge.log("[WAEX-SG] hookTabIcon hooked successfully");
         } catch (Throwable t) {
-            logDebug("hookTabIcon error", t);
+            XposedBridge.log("[WAEX-SG] hookTabIcon error: " + t);
+            t.printStackTrace();
         }
     }
 
@@ -254,8 +334,10 @@ public class SeparateGroup extends Feature {
                     }
                 }
             });
+            XposedBridge.log("[WAEX-SG] hookTabName hooked successfully");
         } catch (Throwable t) {
-            logDebug("hookTabName error", t);
+            XposedBridge.log("[WAEX-SG] hookTabName error: " + t);
+            t.printStackTrace();
         }
     }
 
@@ -396,8 +478,10 @@ public class SeparateGroup extends Feature {
                     XposedHelpers.setIntField(filters, "count", resultList.size());
                 }
             });
+            XposedBridge.log("[WAEX-SG] hookTabInstance hooked successfully");
         } catch (Throwable t) {
-            logDebug("hookTabInstance error", t);
+            XposedBridge.log("[WAEX-SG] hookTabInstance error: " + t);
+            t.printStackTrace();
         }
     }
 
@@ -432,8 +516,10 @@ public class SeparateGroup extends Feature {
                     }
                 }
             });
+            XposedBridge.log("[WAEX-SG] hookTabList hooked successfully");
         } catch (Throwable t) {
-            logDebug("hookTabList error", t);
+            XposedBridge.log("[WAEX-SG] hookTabList error: " + t);
+            t.printStackTrace();
         }
     }
 

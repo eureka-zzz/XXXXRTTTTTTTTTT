@@ -71,6 +71,10 @@
     <string name="downloadviewonce_sum">Show button to download view once media</string>
     <string name="separate_groups">Separate Groups</string>
     <string name="separate_groups_sum">Separate your chats by: Groups, Private Chats, Status, Calls, Communities</string>
+    <string name="separate_groups_counter_title">Separate Groups Counter</string>
+    <string name="separate_groups_counter_sum">Choose how the badge count is calculated: count of unread conversations or total unread messages</string>
+    <string name="separate_groups_counter_conversations">Unread Conversations</string>
+    <string name="separate_groups_counter_messages">Unread Messages</string>
     <string name="separate_groups_disabled_wa_update">Currently disabled due to a recent WhatsApp update (2.26.13.xx or greater).</string>
     <string name="separate_groups_unsupported_sum">WhatsApp updated and disabled the runtime hooks needed for Separate Groups. This feature is temporarily disabled on your version.</string>
     <string name="new_ui_group_filter_unsupported_sum">WhatsApp updated and disabled the runtime hooks needed for the new group filter UI. This feature is temporarily disabled on your version.</string>

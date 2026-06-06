@@ -388,6 +388,11 @@ public class AlertDialogWpp {
 
     private boolean mIsBottomSheet = true;
 
+    public AlertDialogWpp setBottomSheet(boolean isBottomSheet) {
+        mIsBottomSheet = isBottomSheet;
+        return this;
+    }
+
     public AlertDialogWpp asBottomSheet() {
         mIsBottomSheet = true;
         return this;

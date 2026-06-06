@@ -29,6 +29,14 @@ import com.waenhancer.xposed.core.components.WaContactWpp;
 import com.waenhancer.xposed.core.devkit.Unobfuscator;
 import com.waenhancer.xposed.core.devkit.UnobfuscatorCache;
 import com.waenhancer.xposed.core.db.MessageHistory;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.ProgressBar;
+import android.view.Gravity;
+import android.util.TypedValue;
+import android.graphics.Typeface;
+import android.content.res.ColorStateList;
+import android.widget.ImageView;
 import com.waenhancer.xposed.features.customization.BubbleColors;
 import com.waenhancer.xposed.features.media.StatusDownload;
 import com.waenhancer.xposed.features.general.AntiRevoke;
@@ -322,8 +330,11 @@ public class FeatureLoader {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         super.afterHookedMethod(param);
+                        Activity activity = (Activity) param.thisObject;
+                        if (pref.getBoolean("separategroups", false)) {
+                            optimizeDatabaseIndexes(activity);
+                        }
                         if (!list.isEmpty()) {
-                            var activity = (Activity) param.thisObject;
                             var msg = String.join("\n",
                                     list.stream().map(item -> item.getPluginName() + " - " + item.getMessage())
                                             .toArray(String[]::new));
@@ -694,30 +705,34 @@ public class FeatureLoader {
         return "HomeActivity".equals(activity.getClass().getSimpleName());
     }
 
+    // Introduce a delayed loading dialog to avoid flashing for fast loads
+    private static Runnable loadingDialogRunnable = null;
+    private static AlertDialogWpp loadingDialog = null;
+
     public static void checkLoading(Activity activity) {
         if (isLoaded || activity == null) return;
         
-        // Gate checkLoading behind the show_hook_toast preference
+        // Respect user preference
         if (Utils.xprefs != null && !Utils.xprefs.getBoolean("show_hook_toast", true)) return;
         
-        new Handler(Looper.getMainLooper()).post(() -> {
+        Handler handler = new Handler(Looper.getMainLooper());
+        // Schedule dialog after a short delay (e.g., 300ms)
+        loadingDialogRunnable = () -> {
             try {
-                // If still not loaded, show a simple non-cancelable dialog
-                if (isLoaded) return;
-                
-                var dialog = new AlertDialogWpp(activity)
+                if (isLoaded) return; // loading finished before delay
+                AlertDialogWpp dialog = new AlertDialogWpp(activity)
                         .setTitle("WaEnhancerX")
                         .setMessage("Hooking in to WhatsApp cache. Please wait...")
-                        .setCancelable(false)
-                        .show();
-                
-                // Auto-dismiss when loaded
+                        .setCancelable(false);
+                dialog.show();
+                loadingDialog = dialog;
+                // Dismiss when loading completes
                 new Thread(() -> {
                     try {
                         loadLatch.await();
-                        new Handler(Looper.getMainLooper()).post(() -> {
+                        handler.post(() -> {
                             try {
-                                dialog.dismiss();
+                                if (loadingDialog != null) loadingDialog.dismiss();
                                 triggerLoadedFeedback();
                             } catch (Throwable ignored) {}
                         });
@@ -726,7 +741,19 @@ public class FeatureLoader {
             } catch (Throwable t) {
                 XposedBridge.log("[WAEX] Failed to show loading dialog: " + t.getMessage());
             }
-        });
+        };
+        handler.postDelayed(loadingDialogRunnable, 300);
+        // If loading finishes early, cancel pending dialog
+        new Thread(() -> {
+            try {
+                loadLatch.await();
+                handler.removeCallbacks(loadingDialogRunnable);
+                handler.post(() -> {
+                    if (loadingDialog != null) loadingDialog.dismiss();
+                    triggerLoadedFeedback();
+                });
+            } catch (Throwable ignored) {}
+        }).start();
     }
 
     /**
@@ -1072,6 +1099,193 @@ public class FeatureLoader {
         } catch (Throwable e) {
             XposedBridge.log("[WAEX] Error showing restart dialog: " + e.getMessage());
         }
+    }
+
+    private static boolean verifyTableAndColumns(android.database.sqlite.SQLiteDatabase db, String tableName, String... columns) {
+        try {
+            boolean tableExists = false;
+            try (android.database.Cursor c = db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='" + tableName + "'", null)) {
+                if (c != null && c.moveToFirst()) {
+                    tableExists = true;
+                }
+            }
+            if (!tableExists) return false;
+
+            java.util.Set<String> existingColumns = new java.util.HashSet<>();
+            try (android.database.Cursor c = db.rawQuery("PRAGMA table_info(" + tableName + ")", null)) {
+                if (c != null) {
+                    int nameIdx = c.getColumnIndex("name");
+                    if (nameIdx != -1) {
+                        while (c.moveToNext()) {
+                            existingColumns.add(c.getString(nameIdx));
+                        }
+                    }
+                }
+            }
+            for (String col : columns) {
+                if (!existingColumns.contains(col)) {
+                    XposedBridge.log("[WAEX-DB] Column '" + col + "' not found in table '" + tableName + "'");
+                    return false;
+                }
+            }
+            return true;
+        } catch (Throwable t) {
+            XposedBridge.log("[WAEX-DB] Error verifying table/columns for '" + tableName + "': " + t.getMessage());
+            return false;
+        }
+    }
+
+    private static void optimizeDatabaseIndexes(Activity activity) {
+        new Thread(() -> {
+            try {
+                com.waenhancer.xposed.core.db.MessageStore store = com.waenhancer.xposed.core.db.MessageStore.getInstance();
+                android.database.sqlite.SQLiteDatabase db = store != null ? store.getDatabase() : null;
+                if (db != null) {
+                    boolean hasChatTable = verifyTableAndColumns(db, "chat", "unseen_message_count", "jid_row_id");
+                    boolean hasMessageTable = verifyTableAndColumns(db, "message", "key_id");
+
+                    boolean needChatIndex = false;
+                    boolean needMessageIndex = false;
+
+                    if (hasChatTable) {
+                        try (android.database.Cursor c = db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='index' AND name='waex_chat_unseen_idx'", null)) {
+                            if (c == null || !c.moveToFirst()) {
+                                needChatIndex = true;
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+
+                    if (hasMessageTable) {
+                        try (android.database.Cursor c = db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='index' AND name='waex_message_key_id_idx'", null)) {
+                            if (c == null || !c.moveToFirst()) {
+                                needMessageIndex = true;
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+
+                    if (needChatIndex || needMessageIndex) {
+                        XposedBridge.log("[WAEX-DB] Displaying optimization dialog...");
+                        final android.app.Dialog[] dialogRef = new android.app.Dialog[1];
+                        java.util.concurrent.CountDownLatch dialogLatch = new java.util.concurrent.CountDownLatch(1);
+                        
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            try {
+                                if (activity != null && !activity.isFinishing()) {
+                                    AlertDialogWpp alert = new AlertDialogWpp(activity);
+                                    alert.setBottomSheet(true);
+
+                                    float density = activity.getResources().getDisplayMetrics().density;
+                                    LinearLayout layout = new LinearLayout(activity);
+                                    layout.setOrientation(LinearLayout.VERTICAL);
+                                    layout.setGravity(Gravity.CENTER_HORIZONTAL);
+                                    int padding = (int) (24 * density);
+                                    layout.setPadding(padding, padding, padding, padding);
+
+                                    ProgressBar progressBar = new ProgressBar(activity);
+                                    progressBar.setIndeterminate(true);
+                                    int pbSize = (int) (48 * density);
+                                    LinearLayout.LayoutParams pbParams = new LinearLayout.LayoutParams(pbSize, pbSize);
+                                    pbParams.bottomMargin = (int) (16 * density);
+                                    progressBar.setLayoutParams(pbParams);
+
+                                    try {
+                                        int accentColor = com.waenhancer.xposed.utils.DesignUtils.getThemeAccentColor(activity);
+                                        progressBar.setIndeterminateTintList(ColorStateList.valueOf(accentColor));
+                                    } catch (Throwable ignored) {}
+
+                                    layout.addView(progressBar);
+
+                                    // Text components container
+                                    LinearLayout textLayout = new LinearLayout(activity);
+                                    textLayout.setOrientation(LinearLayout.VERTICAL);
+                                    LinearLayout.LayoutParams textLayoutParams = new LinearLayout.LayoutParams(
+                                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                                    textLayout.setLayoutParams(textLayoutParams);
+
+                                    // Title
+                                    TextView titleView = new TextView(activity);
+                                    titleView.setText("One-time WAEX Optimization");
+                                    titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
+                                    titleView.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+                                    titleView.setTextColor(com.waenhancer.xposed.utils.DesignUtils.getThemeTextColorPrimary(activity));
+                                    titleView.setGravity(Gravity.CENTER_HORIZONTAL);
+                                    textLayout.addView(titleView);
+
+                                    // Subtitle
+                                    TextView subtitleView = new TextView(activity);
+                                    subtitleView.setText("Optimizing your WhatsApp experience");
+                                    subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+                                    subtitleView.setTextColor(com.waenhancer.xposed.utils.DesignUtils.getThemeTextColorSecondary(activity));
+                                    subtitleView.setAlpha(0.9f);
+                                    subtitleView.setGravity(Gravity.CENTER_HORIZONTAL);
+                                    textLayout.addView(subtitleView);
+
+                                    // Note
+                                    TextView noteView = new TextView(activity);
+                                    noteView.setText("This may take a few seconds...");
+                                    noteView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                                    noteView.setTextColor(com.waenhancer.xposed.utils.DesignUtils.getThemeTextColorSecondary(activity));
+                                    noteView.setAlpha(0.7f);
+                                    LinearLayout.LayoutParams noteParams = new LinearLayout.LayoutParams(
+                                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                                    noteParams.gravity = Gravity.CENTER_HORIZONTAL;
+                                    noteParams.topMargin = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 8, activity.getResources().getDisplayMetrics());
+                                    noteView.setLayoutParams(noteParams);
+                                    textLayout.addView(noteView);
+
+                                    layout.addView(textLayout);
+
+                                    alert.setView(layout);
+                                    alert.setCancelable(false);
+                                    dialogRef[0] = alert.show();
+                                }
+                            } catch (Throwable t) {
+                                XposedBridge.log("[WAEX-DB] Failed to show optimization dialog: " + t.getMessage());
+                            } finally {
+                                dialogLatch.countDown();
+                            }
+                        });
+
+                        try {
+                            dialogLatch.await(5, TimeUnit.SECONDS);
+                        } catch (InterruptedException ignored) {}
+
+
+
+                        long startTime = System.currentTimeMillis();
+                        if (needChatIndex) {
+                            try {
+                                db.execSQL("CREATE INDEX IF NOT EXISTS waex_chat_unseen_idx ON chat (unseen_message_count, jid_row_id)");
+                                XposedBridge.log("[WAEX-DB] Index waex_chat_unseen_idx created successfully");
+                            } catch (Throwable t) {
+                                XposedBridge.log("[WAEX-DB] Error creating waex_chat_unseen_idx: " + t.getMessage());
+                            }
+                        }
+                        if (needMessageIndex) {
+                            try {
+                                db.execSQL("CREATE INDEX IF NOT EXISTS waex_message_key_id_idx ON message (key_id)");
+                                XposedBridge.log("[WAEX-DB] Index waex_message_key_id_idx created successfully");
+                            } catch (Throwable t) {
+                                XposedBridge.log("[WAEX-DB] Error creating waex_message_key_id_idx: " + t.getMessage());
+                            }
+                        }
+                        XposedBridge.log("[WAEX-DB] Database indexes optimization completed in " + (System.currentTimeMillis() - startTime) + " ms");
+
+                        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                            try {
+                                if (dialogRef[0] != null && dialogRef[0].isShowing()) {
+                                    dialogRef[0].dismiss();
+                                }
+                            } catch (Throwable ignored) {}
+                        }, 2000);
+                    } else {
+                        XposedBridge.log("[WAEX-DB] Indexes already exist or tables not compatible, skipping optimization");
+                    }
+                }
+            } catch (Throwable t) {
+                XposedBridge.log("[WAEX-DB] Error in index optimization: " + t.getMessage());
+            }
+        }).start();
     }
 
     private static class ErrorItem {

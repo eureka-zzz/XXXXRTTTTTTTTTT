@@ -2,9 +2,10 @@
 Added support for WA/WB 2.26.23.xx
 
 [Improvements]
-- Optimized conversation messages scroll to avoid lags
+- Include one-time db optimization for better performance (Dialog will show only once)
 
 [Fixes]
 - Fixed sending file as audio note
 - Fixed Hide Blue Ticks
 - Fixed Hide Typing & Recording Voice
+- Fixed Group/Chats Counter when Separate Groups is Enabled
