@@ -14,10 +14,13 @@
 
 ## Main Features
 
-### ⚡ Pro Features (Exclusive to WaEnhancerX Pro)
+### ⚡ Pro Features (Exclusive to WaEnhancer X Pro)
 - **Message Bomber**: Send multiple repeated messages to a contact or group instantly with customizable count and delays.
 - **Enhanced Media Deletion (Delete Message File)**: Automatically delete downloaded media files from your local storage when a message is deleted for you/me or by the sender.
 - **Sent Media Clean-Up (Delete Message File Sent)**: Automatically delete sent media files from your device's local storage when you delete a sent message.
+- **Always Typing (Composing Simulator)**: Simulate typing or recording audio status dynamically for selected contacts or globally, with customizable activation modes (e.g., continuous, scoped, or keyboard-restricted) and simulated status types.
+- **Status View Customization**: Customize the status/stories viewing layout and gestures (hide bottom reply bar, remove quick reaction emojis or the heart/like button, add a Play/Pause button, add a reply option directly to the status menu, disable the swipe-up reply gesture, and enable long-press gestures to fast-forward or rewind status video playback).
+- **Status Video Splitter**: Automatically split long videos into 30, 60, or 90-second clips for seamless uploading to WhatsApp Status.
 
 ### Privacy & Security
 - `Anti-Revoke` (Prevents chats/messages from being deleted for you)
